@@ -3,6 +3,7 @@
 
 import { aggressionScore, classifyFlow, convictionScore, unusualityScore, type FlowRow } from "@/lib/flow";
 import { fetchFlow, MarketSnackError } from "@/lib/marketsnack";
+import { fetchAlpacaFlow, AlpacaError, hasAlpacaKeys } from "@/lib/alpaca";
 import { saveTrades } from "@/lib/store";
 import { ivContextScore, type IvContextScore } from "@/lib/ivcontext";
 import { loadIvHistory, saveIvSnapshot } from "@/lib/ivStore";
@@ -10,6 +11,18 @@ import { fetchDailyBars } from "@/lib/massive";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Fuente de la capa de agresividad: Alpaca si hay claves, si no MarketSnack.
+// Ambas devuelven RawTrade[] con el mismo formato, así que es intercambiable.
+const USE_ALPACA = hasAlpacaKeys();
+const SOURCE_NAME = USE_ALPACA ? "Alpaca" : "MarketSnack";
+const fetchSource = USE_ALPACA ? fetchAlpacaFlow : fetchFlow;
+
+/** Mensaje legible de un error de cualquiera de las dos fuentes. */
+function sourceError(err: unknown): string {
+  if (err instanceof MarketSnackError || err instanceof AlpacaError) return err.message;
+  return `Error al consultar ${SOURCE_NAME}.`;
+}
 
 // Parámetros del reporte (ajustables).
 const MIN_PREMIUM = 100_000; // piso server-side: solo trades "de dinero real"
@@ -48,7 +61,7 @@ export async function GET(request: Request) {
     if (!ticker) return Response.json({ error: "ticker requerido" }, { status: 400 });
     const preset = CHART_PRESETS[days] ?? { minPremium: 500_000, maxPages: 20 };
     try {
-      const { trades, truncated } = await fetchFlow(ticker, {
+      const { trades, truncated } = await fetchSource(ticker, {
         period: "1m",
         minPremium: preset.minPremium,
         maxPages: preset.maxPages,
@@ -63,9 +76,7 @@ export async function GET(request: Request) {
         truncated,
       });
     } catch (err) {
-      const message =
-        err instanceof MarketSnackError ? err.message : "Error al consultar MarketSnack.";
-      return Response.json({ error: message }, { status: 502 });
+      return Response.json({ error: sourceError(err) }, { status: 502 });
     }
   }
 
@@ -81,10 +92,10 @@ export async function GET(request: Request) {
           return;
         }
 
-        send({ type: "step", label: "Conectando con MarketSnack…" });
+        send({ type: "step", label: `Conectando con ${SOURCE_NAME}…` });
         send({ type: "step", label: `Buscando transacciones ≥ $${(MIN_PREMIUM / 1000).toFixed(0)}K de ${ticker}…` });
 
-        const { trades, truncated } = await fetchFlow(ticker, {
+        const { trades, truncated } = await fetchSource(ticker, {
           period,
           minPremium: MIN_PREMIUM,
           maxPages: LEAN_MAX_PAGES,
@@ -110,7 +121,7 @@ export async function GET(request: Request) {
         let convictionRows = interesting;
         let convictionWindow = period;
         try {
-          const wide = await fetchFlow(ticker, {
+          const wide = await fetchSource(ticker, {
             period: "1m",
             minPremium: CONVICTION_MIN_PREMIUM,
             maxPages: CONVICTION_MAX_PAGES,
@@ -207,9 +218,7 @@ export async function GET(request: Request) {
           },
         });
       } catch (err) {
-        const message =
-          err instanceof MarketSnackError ? err.message : "Error inesperado al consultar MarketSnack.";
-        send({ type: "error", message });
+        send({ type: "error", message: sourceError(err) });
       } finally {
         controller.close();
       }
