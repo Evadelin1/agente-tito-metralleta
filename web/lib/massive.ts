@@ -338,6 +338,59 @@ export async function fetchWheelChain(
   return { spot, quotes: otm };
 }
 
+/**
+ * Sesgo direccional ligero de un ticker: suma el nocional (OI × 100 × strike) de
+ * calls y de puts sobre una muestra ACOTADA de la cadena (primeras `pagesCap`
+ * páginas = vencimientos más cercanos, que es donde vive el flujo relevante).
+ *
+ * Es deliberadamente barato: la comparación sectorial consulta 6 tickers, así que
+ * no puede pagar la cadena completa de cada uno. Nunca lanza: si el ticker falla,
+ * devuelve ok=false para que el par simplemente no cuente.
+ */
+export interface FlowBiasRaw {
+  ticker: string;
+  callNotional: number;
+  putNotional: number;
+  contracts: number;
+  ok: boolean;
+}
+
+export async function fetchFlowBias(ticker: string, pagesCap = 2): Promise<FlowBiasRaw> {
+  const clean = ticker.trim().toUpperCase();
+  const out: FlowBiasRaw = { ticker: clean, callNotional: 0, putNotional: 0, contracts: 0, ok: false };
+  if (!clean) return out;
+
+  try {
+    const key = apiKey();
+    let url: string | null = `${BASE_URL}/v3/snapshot/options/${encodeURIComponent(clean)}?limit=250`;
+    let page = 0;
+    while (url && page < pagesCap) {
+      page += 1;
+      const res: Response = await fetch(url, {
+        headers: { Authorization: `Bearer ${key}` },
+        cache: "no-store",
+      });
+      if (!res.ok) break;
+      const json: { results?: RawContract[]; next_url?: string } = await res.json();
+      for (const c of json.results ?? []) {
+        const oi = c.open_interest ?? 0;
+        const strike = c.details?.strike_price ?? 0;
+        const shares = c.details?.shares_per_contract ?? 100;
+        const n = oi * shares * strike;
+        if (c.details?.contract_type === "put") out.putNotional += n;
+        else out.callNotional += n;
+        out.contracts += 1;
+      }
+      url = json.next_url ?? null;
+    }
+  } catch {
+    // Silencioso a propósito: un par que falla simplemente no se mide.
+  }
+
+  out.ok = out.contracts > 0 && out.callNotional + out.putNotional > 0;
+  return out;
+}
+
 function describeStatus(status: number, ticker: string, body: string): string {
   switch (status) {
     case 401:

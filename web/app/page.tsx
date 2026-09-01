@@ -6,6 +6,7 @@ import type { ChainEvent, ChainMeta, CompanyInfo, DailyBar, Row } from "@/lib/ty
 import type { StructureScore } from "@/lib/structure";
 import type { IvContextScore } from "@/lib/ivcontext";
 import type { ValidationScore } from "@/lib/validation";
+import type { SectorComparison } from "@/lib/sector";
 import type { ChainSnapshot } from "@/lib/chainStore";
 import { gexAnalysis, type TradeLite } from "@/lib/gex";
 import { gexHeatmap, type HeatTrade } from "@/lib/gexHeatmap";
@@ -38,6 +39,7 @@ import UnusualityCard, { type UnusualityMeta, type UnusualRow } from "./componen
 import StructureCard from "./components/StructureCard";
 import IvContextCard from "./components/IvContextCard";
 import ValidationCard from "./components/ValidationCard";
+import SectorCard from "./components/SectorCard";
 import FlowPriceChart from "./components/FlowPriceChart";
 import OptionChainTable from "./components/OptionChainTable";
 import ChartPanel from "./ChartPanel";
@@ -79,6 +81,7 @@ export default function Dashboard() {
   const [unusualRows, setUnusualRows] = useState<UnusualRow[] | null>(null);
   const [ivContext, setIvContext] = useState<IvContextScore | null>(null);
   const [validation, setValidation] = useState<ValidationScore | null>(null);
+  const [sector, setSector] = useState<SectorComparison | null>(null);
   const [notable, setNotable] = useState<FlowRow[] | null>(null);
   const [flowMeta, setFlowMeta] = useState<FlowMeta | null>(null);
 
@@ -258,6 +261,7 @@ export default function Dashboard() {
     setStructure(null); setChainHistory([]);
     setAggScore(null); setConviction(null); setConvRows(null); setConvMeta(null);
     setUnusuality(null); setUnusualRows(null); setIvContext(null); setValidation(null);
+    setSector(null);
     setNotable(null); setFlowMeta(null);
     setChainErr(null); setFlowErr(null);
     chainDoneRef.current = false; flowDoneRef.current = false;
@@ -268,6 +272,13 @@ export default function Dashboard() {
     fetch(`/api/validation?ticker=${encodeURIComponent(tk)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: ValidationScore | null) => { if (d && !("error" in d)) setValidation(d); })
+      .catch(() => {});
+
+    // Comparación sectorial (Tarea 3): ¿el flujo es sectorial o individual?
+    // Consulta 6 tickers en el servidor, no bloquea las streams.
+    fetch(`/api/sector?ticker=${encodeURIComponent(tk)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: SectorComparison | null) => { if (d && !("error" in d)) setSector(d); })
       .catch(() => {});
 
     // Memoria: lee el sesgo histórico ANTES de fijar el target para auto-corregirlo.
@@ -432,6 +443,8 @@ export default function Dashboard() {
               </div>
             )}
             {!levels && <NewsCard ticker={ticker} company={company} callPct={callPct} />}
+
+            {sector && <SectorCard s={sector} />}
 
             {structure && <ProWallsCard ticker={ticker} structure={structure} gex={gex} horizonDays={horizonDays} levels={levels} />}
 
