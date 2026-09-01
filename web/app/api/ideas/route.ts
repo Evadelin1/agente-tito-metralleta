@@ -9,6 +9,7 @@
 
 import { classifyFlow, type FlowRow } from "@/lib/flow";
 import { fetchMarketFlow, MarketSnackError } from "@/lib/marketsnack";
+import { fetchAlpacaMarketFlow, AlpacaError, hasAlpacaKeys } from "@/lib/alpaca";
 import { isTradeableIdea, passesQualityFilter } from "@/lib/risk";
 import { loadTrades, saveTrades } from "@/lib/store";
 import { fetchDailyBars } from "@/lib/massive";
@@ -60,16 +61,25 @@ export async function GET() {
       const send = (e: SseEvent) => controller.enqueue(encoder.encode(sse(e)));
 
       try {
-        send({ type: "step", label: "Escaneando el flujo de todo el mercado…" });
+        const useAlpaca = hasAlpacaKeys();
+        const scanMarket = useAlpaca ? fetchAlpacaMarketFlow : fetchMarketFlow;
+        send({
+          type: "step",
+          label: useAlpaca
+            ? "Escaneando el universo líquido con Alpaca…"
+            : "Escaneando el flujo de todo el mercado…",
+        });
 
-        const { trades, pages, truncated } = await fetchMarketFlow({
+        const { trades, pages, truncated } = await scanMarket({
           period: PERIOD,
           minPremium: MIN_PREMIUM,
           maxPages: MAX_PAGES,
           onPage: (page, accumulated) => {
             send({
               type: "step",
-              label: `Página ${page} — ${accumulated} operaciones grandes`,
+              label: useAlpaca
+                ? `Revisando ${page} tickers — ${accumulated} operaciones grandes`
+                : `Página ${page} — ${accumulated} operaciones grandes`,
             });
           },
         });
@@ -178,7 +188,7 @@ export async function GET() {
         });
       } catch (err) {
         const message =
-          err instanceof MarketSnackError
+          err instanceof MarketSnackError || err instanceof AlpacaError
             ? err.message
             : "Error inesperado al escanear el mercado.";
         send({ type: "error", message });

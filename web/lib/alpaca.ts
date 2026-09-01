@@ -195,3 +195,48 @@ export async function fetchAlpacaFlow(
   trades.sort((a, b) => b.premium - a.premium);
   return { trades, pages: page, truncated };
 }
+
+/**
+ * Universo curado para el escaneo de mercado (/ideas). Alpaca no expone un feed
+ * de "todo el mercado", así que se barre esta lista de los subyacentes con más
+ * flujo de opciones. Añadir un nombre = añadirlo aquí.
+ */
+export const MARKET_SCAN_UNIVERSE = [
+  "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "TSLA", "AMD",
+  "AVGO", "MU", "NFLX", "PLTR", "COIN", "SMCI", "MSTR", "SPY",
+  "QQQ", "IWM", "JPM", "BAC", "XOM", "CVX", "DIS", "BABA",
+  "UBER", "F", "GM", "SHOP",
+];
+
+/**
+ * Equivalente a fetchMarketFlow (MarketSnack) pero con Alpaca: barre el universo
+ * curado con concurrencia limitada y junta el flujo de todos. Reemplazo directo
+ * en /ideas. Un ticker que falla simplemente no aporta.
+ */
+export async function fetchAlpacaMarketFlow(opts: FetchFlowOptions = {}): Promise<FlowResult> {
+  if (!hasAlpacaKeys()) throw new AlpacaError("Faltan las claves de Alpaca.");
+  const minPremium = opts.minPremium ?? 0;
+  const universe = MARKET_SCAN_UNIVERSE;
+  const trades: RawTrade[] = [];
+  let done = 0;
+  let idx = 0;
+  const CONCURRENCY = 6;
+
+  async function worker() {
+    while (idx < universe.length) {
+      const t = universe[idx++];
+      try {
+        const r = await fetchAlpacaFlow(t, { minPremium, maxPages: 2 });
+        trades.push(...r.trades);
+      } catch {
+        // ticker fallido → se omite, no rompe el escaneo
+      }
+      done++;
+      await opts.onPage?.(done, trades.length);
+    }
+  }
+
+  await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+  trades.sort((a, b) => b.premium - a.premium);
+  return { trades, pages: universe.length, truncated: false };
+}
