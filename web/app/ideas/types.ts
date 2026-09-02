@@ -31,6 +31,8 @@ export interface Idea {
   unusualScore: number;
   repeated: boolean;
   history: IdeaHistory | null;
+  /** Señal AGREGADA del ticker: dirección clara y comprada, o mixta. */
+  signal: "bull" | "bear" | "mixed";
 }
 
 export interface IdeasMeta {

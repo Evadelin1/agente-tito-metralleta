@@ -2,6 +2,31 @@
 
 import type { Idea } from "@/app/ideas/types";
 import type { RiskProfile, Sizing } from "@/lib/risk";
+import { ideaRidesCleanSignal } from "@/lib/signalQuality";
+
+/**
+ * Automatiza el "paso 3" manual: ✅ señal limpia = el ticker va claro a la
+ * dirección de esta idea (calls compradas / puts compradas) Y te alcanza para
+ * al menos un contrato. Si no, muestra la dirección cruda o "mixta".
+ */
+function SignalBadge({ i, s }: { i: Idea; s: Sizing }) {
+  const clean = ideaRidesCleanSignal(i.type, i.signal);
+  const affordable = !s.blocked && s.maxContracts >= 1;
+  if (clean && affordable) {
+    return (
+      <span
+        className="chip"
+        style={{ background: "var(--green-bg)", color: "var(--green-dark)", fontWeight: 700 }}
+        title="El dinero del ticker va claro a esta dirección y comprándose (al ask), y te alcanza para ≥1 contrato"
+      >
+        ✅ señal limpia
+      </span>
+    );
+  }
+  if (i.signal === "bull") return <span className="chip chip-neutral">↑ alcista</span>;
+  if (i.signal === "bear") return <span className="chip chip-neutral">↓ bajista</span>;
+  return <span className="muted">mixta</span>;
+}
 
 const px = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const money = new Intl.NumberFormat("en-US", {
@@ -81,6 +106,7 @@ function IdeaCard({
         <a className="idea-ticker" href={`/?ticker=${i.ticker}`}>{i.ticker}</a>
         <span className="idea-contract">{contractLabel(i)}</span>
         <span className="muted">{expiryLabel(i)}</span>
+        <SignalBadge i={i} s={s} />
         {i.repeated && <span className="chip chip-neutral">🔁 repetido</span>}
         <button
           className={`star ${starred ? "on" : ""}`}
@@ -182,6 +208,7 @@ export default function IdeasTable({
           <tr>
             <th>Ticker</th>
             <th>Contrato</th>
+            <th>Señal</th>
             <th>Vencimiento</th>
             <th className="num">Prima flow</th>
             <th className="num">Precio</th>
@@ -205,6 +232,7 @@ export default function IdeasTable({
                 {contractLabel(i)}
                 {i.repeated && <span className="chip chip-neutral">🔁</span>}
               </td>
+              <td><SignalBadge i={i} s={s} /></td>
               <td className="muted">{expiryLabel(i)}</td>
               <td className="num">{compact.format(i.premium)}</td>
               <td className="num">${px.format(i.price)}</td>

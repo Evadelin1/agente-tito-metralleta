@@ -11,6 +11,7 @@ import { classifyFlow, type FlowRow } from "@/lib/flow";
 import { fetchMarketFlow, MarketSnackError } from "@/lib/marketsnack";
 import { fetchAlpacaMarketFlow, AlpacaError, hasAlpacaKeys } from "@/lib/alpaca";
 import { isTradeableIdea, passesQualityFilter } from "@/lib/risk";
+import { signalByTicker } from "@/lib/signalQuality";
 import { loadTrades, saveTrades } from "@/lib/store";
 import { fetchDailyBars } from "@/lib/massive";
 import { validationScore, type FlowLite } from "@/lib/validation";
@@ -87,6 +88,10 @@ export async function GET() {
         send({ type: "step", label: `Clasificando ${trades.length} operaciones…` });
         const { rows } = classifyFlow(trades, now);
 
+        // Señal agregada por ticker (dirección clara + comprada al ask) sobre TODO
+        // el flujo escaneado, no solo las ideas que pasan el filtro.
+        const tickerSignals = signalByTicker(rows);
+
         // Por qué se cae cada contrato — hace visible el trabajo de la capa 1.
         const rejected = { theta_alto: 0, vencido: 0, sin_theta: 0, no_inusual: 0 };
         for (const r of dedupeByContract(rows)) {
@@ -158,6 +163,7 @@ export async function GET() {
           unusualScore: r.scores?.total ?? 0,
           repeated: Boolean(r.flags?.repeated),
           history: history.get(r.underlying) ?? null,
+          signal: tickerSignals.get(r.underlying) ?? "mixed",
         }));
 
         // La cobertura del historial crece sola: cada escaneo guarda lo que vio,
