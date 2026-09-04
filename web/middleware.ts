@@ -29,7 +29,8 @@ export function middleware(req: NextRequest) {
   });
 }
 
-// Protege todo menos los assets estáticos.
+// Protege todo menos los assets estáticos y el endpoint de salud (que el
+// "despertador" pinguea sin credenciales para mantener viva la instancia).
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/health).*)"],
 };
