@@ -1,0 +1,38 @@
+# Despliegue de Tito Metralleta en Render (servidor Node real: aguanta los
+# escaneos largos de /ideas y las escrituras de historial en data/).
+#
+# Uso: en https://dashboard.render.com → New → Blueprint → conecta el repo
+# infusionvictor/agente-tito-metralleta. Render lee este archivo. Luego pega
+# las variables marcadas `sync: false` en el panel (NO se commitean).
+#
+# Nota: el plan free se duerme tras ~15 min inactivo (primer acceso ~30-60s).
+# El historial (data/) vive mientras la instancia esté viva; se reinicia al
+# redeploy o al despertar. Para memoria permanente haría falta un disco/BD.
+services:
+  - type: web
+    name: tito-metralleta
+    runtime: node
+    rootDir: web
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # --- secretos: se pegan en el panel de Render, no aquí ---
+      - key: MASSIVE_API_KEY
+        sync: false
+      - key: MASSIVE_MAX_PAGES
+        value: "40"
+      - key: ALPACA_API_KEY_ID
+        sync: false
+      - key: ALPACA_API_SECRET_KEY
+        sync: false
+      - key: MARKETSNACK_COOKIE
+        sync: false
+      # --- puerta de contraseña del sitio ---
+      - key: SITE_USER
+        sync: false
+      - key: SITE_PASSWORD
+        sync: false
