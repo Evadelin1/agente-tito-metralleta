@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import NavTabs from "../components/NavTabs";
 import { marketLearningNote, type MarketRead } from "@/lib/mercado";
 
@@ -65,8 +64,6 @@ function MarketCard({ m }: { m: MarketRead }) {
           </div>
         </div>
       )}
-
-      <div className="card-sub" style={{ fontSize: 14 }}>{m.behavior}</div>
 
       {/* Techo y piso — techo GRIS, piso NEGRO */}
       <div style={{ display: "flex", gap: 10 }}>
@@ -153,10 +150,6 @@ function MarketCard({ m }: { m: MarketRead }) {
       )}
 
       <div className="iv-note" style={{ marginTop: 2 }}>{m.summary}</div>
-
-      <Link href={`/?ticker=${m.ticker}`} className="nav-tab" style={{ justifyContent: "center", fontWeight: 700 }}>
-        Ver detalle completo (GEX, muros, escenarios) →
-      </Link>
     </section>
   );
 }
@@ -167,20 +160,29 @@ export default function MercadoPage() {
   const [err, setErr] = useState<string | null>(null);
   const [at, setAt] = useState<string | null>(null);
 
-  const load = useCallback(() => {
+  const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
-    fetch("/api/mercado")
-      .then((r) => r.json())
-      .then((d: { markets?: MarketRead[]; generatedAt?: string; error?: string }) => {
-        if (d.error) setErr(d.error);
-        else {
+    // La primera vez, el servidor puede estar calentando la caché: reintentamos
+    // solos unas cuantas veces antes de rendirnos.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        const r = await fetch("/api/mercado", { cache: "no-store" });
+        const d: { markets?: MarketRead[]; generatedAt?: string; error?: string } = await r.json();
+        if (!d.error) {
           setMarkets(d.markets ?? []);
           setAt(d.generatedAt ?? null);
+          setErr(null);
+          setLoading(false);
+          return;
         }
-      })
-      .catch(() => setErr("No se pudo leer el mercado. Reintenta."))
-      .finally(() => setLoading(false));
+        setErr(d.error);
+      } catch {
+        setErr("No se pudo leer el mercado. Reintentando…");
+      }
+      await new Promise((res) => setTimeout(res, 5000));
+    }
+    setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -199,7 +201,7 @@ export default function MercadoPage() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>🧭 Mercado</h1>
-            <div className="card-sub">SPY (= MES) y QQQ (= MNQ) · lee el tape de opciones de hoy</div>
+            <div className="card-sub">SPY (= MES) y QQQ (= MNQ)</div>
           </div>
           <button className="nav-tab on" onClick={load} disabled={loading} style={{ fontWeight: 700 }}>
             {loading ? "Leyendo…" : "↻ Actualizar"}
