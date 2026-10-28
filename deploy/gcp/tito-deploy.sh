@@ -38,11 +38,9 @@ echo "==> 2/6 Preparando variables de entorno (desde web/.env.local)..."
 # La contraseña del sitio (SITE_USER/SITE_PASSWORD) se toma de web/.env.local,
 # NUNCA se escribe en este script (no debe ir a Git). Protege tu token de broker.
 if ! grep -q '^SITE_PASSWORD=' "$WEB/.env.local"; then
-  echo "✗ Falta SITE_PASSWORD en web/.env.local — el sitio quedaría ABIERTO." >&2
-  echo "  Añade estas dos líneas a web/.env.local y reintenta:" >&2
-  echo "      SITE_USER=tito" >&2
-  echo "      SITE_PASSWORD=<tu-clave>" >&2
-  exit 1
+  echo "⚠ Sin SITE_PASSWORD en web/.env.local: el sitio quedará ABIERTO" >&2
+  echo "  (cualquiera con la URL puede verlo). Tu token de broker NO se expone." >&2
+  echo "  Para volver a protegerlo, añade SITE_USER y SITE_PASSWORD a .env.local." >&2
 fi
 # Partimos de .env.local (que ya trae SITE_* y los tokens) y solo fijamos
 # lo específico del servidor público.
