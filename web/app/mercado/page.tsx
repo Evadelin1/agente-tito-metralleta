@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import NavTabs from "../components/NavTabs";
-import type { MarketRead } from "@/lib/mercado";
+import { marketLearningNote, type MarketRead } from "@/lib/mercado";
 
 const money = new Intl.NumberFormat("en-US", {
   style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1,
@@ -23,8 +23,14 @@ function pct(n: number | null, signed = false): string {
   return `${n >= 0 ? "+" : "−"}${s}`;
 }
 
+const NOTE_BG: Record<string, string> = {
+  alza: "#e7f6ec", baja: "#fdeaea", rango: "#eef1f5",
+  mixta: "#fff6e5", "no-fiable": "#fff6e5", "sin-datos": "#eef1f5",
+};
+
 function MarketCard({ m }: { m: MarketRead }) {
   const d = DIR[m.direction];
+  const note = marketLearningNote(m);
   return (
     <section className="card" style={{ gap: 14 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
@@ -62,15 +68,15 @@ function MarketCard({ m }: { m: MarketRead }) {
 
       <div className="card-sub" style={{ fontSize: 14 }}>{m.behavior}</div>
 
-      {/* Techo y piso */}
+      {/* Techo y piso — techo GRIS, piso NEGRO */}
       <div style={{ display: "flex", gap: 10 }}>
-        <div style={{ flex: 1, background: "var(--red-bg)", borderRadius: 10, padding: "8px 10px" }}>
-          <div style={{ fontSize: 11, color: "#d92d20", fontWeight: 700 }}>🔴 TECHO</div>
-          <div style={{ fontWeight: 800 }}>{m.resistance != null ? `$${px.format(m.resistance)}` : "—"}</div>
+        <div style={{ flex: 1, background: "#f1f3f5", borderRadius: 10, padding: "8px 10px" }}>
+          <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 700 }}>⬜ TECHO</div>
+          <div style={{ fontWeight: 800, color: "#6b7280" }}>{m.resistance != null ? `$${px.format(m.resistance)}` : "—"}</div>
         </div>
-        <div style={{ flex: 1, background: "var(--green-bg)", borderRadius: 10, padding: "8px 10px" }}>
-          <div style={{ fontSize: 11, color: "var(--green-dark)", fontWeight: 700 }}>🟢 PISO</div>
-          <div style={{ fontWeight: 800 }}>{m.support != null ? `$${px.format(m.support)}` : "—"}</div>
+        <div style={{ flex: 1, background: "#e9ecef", borderRadius: 10, padding: "8px 10px" }}>
+          <div style={{ fontSize: 11, color: "#111", fontWeight: 700 }}>⬛ PISO</div>
+          <div style={{ fontWeight: 800, color: "#111" }}>{m.support != null ? `$${px.format(m.support)}` : "—"}</div>
         </div>
       </div>
 
@@ -105,8 +111,8 @@ function MarketCard({ m }: { m: MarketRead }) {
           )}
           {(m.gex.callWall != null || m.gex.putWall != null) && (
             <div style={{ display: "flex", gap: 14, fontSize: 14, marginBottom: 2 }}>
-              <span>🔴 Techo <b>{m.gex.callWall != null ? px.format(m.gex.callWall) : "—"}</b></span>
-              <span>🟢 Piso <b>{m.gex.putWall != null ? px.format(m.gex.putWall) : "—"}</b></span>
+              <span style={{ color: "#6b7280" }}>⬜ Techo <b>{m.gex.callWall != null ? px.format(m.gex.callWall) : "—"}</b></span>
+              <span style={{ color: "#111" }}>⬛ Piso <b>{m.gex.putWall != null ? px.format(m.gex.putWall) : "—"}</b></span>
             </div>
           )}
           <div style={{ fontSize: 14 }}>
@@ -130,6 +136,19 @@ function MarketCard({ m }: { m: MarketRead }) {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* 📚 Análisis para aprender — se quita luego */}
+      {note && (
+        <div style={{ background: NOTE_BG[note.verdict] ?? "#eef1f5", borderRadius: 10, padding: "10px 12px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", color: "var(--muted)", marginBottom: 4 }}>
+            📚 ¿ESTÁN ALINEADAS? (modo aprendizaje)
+          </div>
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>{note.title}</div>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.5 }}>
+            {note.lines.map((l, i) => <li key={i}>{l}</li>)}
+          </ul>
         </div>
       )}
 

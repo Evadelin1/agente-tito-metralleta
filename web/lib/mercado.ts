@@ -89,6 +89,96 @@ export function gexFromOptions(options: GexOption[], spot: number): GexRead {
   return { net, regime, magnet, realtimePrice: null, callWall, putWall, topLevels };
 }
 
+// ============================================================================
+// Nota de aprendizaje: lee el bloque GEX del futuro y explica, en llano, si la
+// dirección del flujo y el imán del GEX se ALINEAN o se contradicen. Pensada
+// para enseñar — se puede quitar luego sin tocar el resto.
+// ============================================================================
+
+export type AlignVerdict = "alza" | "baja" | "rango" | "mixta" | "no-fiable" | "sin-datos";
+
+export interface LearningNote {
+  verdict: AlignVerdict;
+  title: string;
+  lines: string[];
+}
+
+function fmtNum(n: number): string {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n);
+}
+
+/**
+ * Explica la alineación entre dirección (flujo) e imán (GEX) del futuro.
+ * Devuelve null si no hay bloque GEX (no hay nada que explicar).
+ */
+export function marketLearningNote(m: MarketRead): LearningNote | null {
+  const g = m.gex;
+  if (!g) return null;
+
+  const price = g.realtimePrice;
+  const magnet = g.magnet;
+  const lines: string[] = [];
+
+  if (price == null || magnet == null) {
+    return {
+      verdict: "sin-datos",
+      title: "Sin datos suficientes",
+      lines: ["Falta el precio del futuro o el imán para leer la señal."],
+    };
+  }
+
+  // ¿Datos fiables? Miramos el Open Interest de las 3 opciones con más dinero.
+  const maxOI = g.topLevels.reduce((mx, l) => Math.max(mx, l.oi), 0);
+  const thin = maxOI > 0 && maxOI < 500;
+
+  const diff = magnet - price; // >0 imán arriba · <0 imán abajo
+  const near = Math.abs(diff) / price < 0.0015; // ~0.15% → "pegado"
+  const magnetAbove = !near && diff > 0;
+  const magnetBelow = !near && diff < 0;
+  const gammaPos = g.net >= 0;
+  const dirUp = m.direction === "alcista";
+  const dirDown = m.direction === "bajista";
+
+  // 1) Dónde está el precio respecto del imán.
+  if (near) lines.push(`El precio (${fmtNum(price)}) está pegado al imán (${fmtNum(magnet)}): el dinero lo ancla ahí.`);
+  else if (magnetAbove) lines.push(`El imán (${fmtNum(magnet)}) está ARRIBA del precio (${fmtNum(price)}): el dinero jala hacia arriba.`);
+  else lines.push(`El imán (${fmtNum(magnet)}) está ABAJO del precio (${fmtNum(price)}): el dinero jala hacia abajo.`);
+
+  // 2) Régimen gamma.
+  lines.push(gammaPos
+    ? "γ+ : el precio tiende a revertir hacia el imán (ancla, rango)."
+    : "γ− : el movimiento se acelera en la dirección que vaya (tendencia).");
+
+  // 3) Veredicto de alineación.
+  let verdict: AlignVerdict;
+  let title: string;
+  if (thin) {
+    verdict = "no-fiable";
+    title = "⚠ Datos flacos — no fiable";
+    lines.push(`Las opciones tienen poco interés abierto (máx ${Math.round(maxOI).toLocaleString()} OI): confírmalo en tu gráfica antes de usar esto.`);
+  } else if (dirUp && magnetAbove) {
+    verdict = "alza";
+    title = "✅ Alineada al ALZA";
+    lines.push("Flujo alcista + imán arriba: las dos señales coinciden. Si rebota en el piso, el camino apunta hacia el imán.");
+  } else if (dirDown && magnetBelow) {
+    verdict = "baja";
+    title = "✅ Alineada a la BAJA";
+    lines.push("Flujo bajista + imán abajo: las dos señales coinciden.");
+  } else if (near && gammaPos) {
+    verdict = "rango";
+    title = "➡️ Rango (γ+)";
+    lines.push("Precio clavado en el imán con γ+: probable lateral entre piso y techo, sin tendencia clara.");
+  } else {
+    verdict = "mixta";
+    title = "🤔 Señal mixta — mejor esperar";
+    const d = dirUp ? "alcista" : dirDown ? "bajista" : "lateral";
+    const where = magnetAbove ? "arriba" : magnetBelow ? "abajo" : "pegado";
+    lines.push(`Flujo ${d} pero el imán tira ${where}: no coinciden. Sin ventaja clara — espera algo más limpio.`);
+  }
+
+  return { verdict, title, lines };
+}
+
 function topStrike(m: Map<number, number>, spot: number | null, side: "above" | "below"): number | null {
   let best: number | null = null;
   let bestP = -1;
