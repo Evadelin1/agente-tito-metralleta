@@ -139,7 +139,7 @@ export default function MercadoPage() {
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>🧭 Mercado — ¿hacia dónde va el dinero?</h1>
+            <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>🧭 Mercado</h1>
             <div className="card-sub">SPY (= MES) y QQQ (= MNQ) · lee el tape de opciones de hoy</div>
           </div>
           <button className="nav-tab on" onClick={load} disabled={loading} style={{ fontWeight: 700 }}>
