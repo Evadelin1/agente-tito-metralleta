@@ -41,7 +41,7 @@ async function readOne(
         gex.realtimePrice = fut;
         read.gex = gex;
       } else if (fut != null) {
-        read.gex = { net: 0, regime: "—", magnet: null, realtimePrice: fut, callWall: null, putWall: null };
+        read.gex = { net: 0, regime: "—", magnet: null, realtimePrice: fut, callWall: null, putWall: null, topLevels: [] };
       }
     } catch {
       // GEX best-effort: si falla, la lectura de Alpaca ya es útil.

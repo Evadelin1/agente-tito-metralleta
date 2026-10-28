@@ -21,6 +21,12 @@ export interface GexOption {
   oi: number;
 }
 
+export interface MicroLevel {
+  strike: number;
+  type: "C" | "P";
+  oi: number;
+}
+
 export interface GexRead {
   net: number; // GEX neto (positivo = dealers estabilizan; negativo = amplifican)
   regime: string;
@@ -28,6 +34,7 @@ export interface GexRead {
   realtimePrice: number | null; // precio real del futuro (tastytrade)
   callWall: number | null; // muro de calls = techo (en escala del índice/micro)
   putWall: number | null; // muro de puts = piso (en escala del índice/micro)
+  topLevels: MicroLevel[]; // los 3 strikes con más Open Interest (dónde está el dinero)
 }
 
 export interface MarketRead {
@@ -74,7 +81,12 @@ export function gexFromOptions(options: GexOption[], spot: number): GexRead {
   const regime = net >= 0
     ? "γ+ estabiliza (el precio tiende a revertir)"
     : "γ− amplifica (el movimiento acelera)";
-  return { net, regime, magnet, realtimePrice: null, callWall, putWall };
+  // Los 3 strikes con más Open Interest = las "3 opciones" donde está el dinero.
+  const topLevels: MicroLevel[] = [...options]
+    .sort((a, b) => b.oi - a.oi)
+    .slice(0, 3)
+    .map((o) => ({ strike: o.strike, type: o.type, oi: o.oi }));
+  return { net, regime, magnet, realtimePrice: null, callWall, putWall, topLevels };
 }
 
 function topStrike(m: Map<number, number>, spot: number | null, side: "above" | "below"): number | null {

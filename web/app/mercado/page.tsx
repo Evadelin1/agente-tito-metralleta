@@ -113,6 +113,23 @@ function MarketCard({ m }: { m: MarketRead }) {
             {m.gex.magnet != null && <>Imán <b>{px.format(m.gex.magnet)}</b> · </>}
             <span className={m.gex.net >= 0 ? "up" : "down"}>{m.gex.regime}</span>
           </div>
+          {m.gex.topLevels.length > 0 && (
+            <div style={{ marginTop: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", color: "var(--muted)", marginBottom: 2 }}>
+                LAS 3 OPCIONES (más dinero puesto)
+              </div>
+              {m.gex.topLevels.map((l, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "1px 0" }}>
+                  <span>
+                    {px.format(l.strike)}<span className={`pill ${l.type === "C" ? "call" : "put"}`} style={{ marginLeft: 6 }}>
+                      {l.type === "C" ? "CALL" : "PUT"}
+                    </span>
+                  </span>
+                  <span className="muted">{Math.round(l.oi).toLocaleString()} OI</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
