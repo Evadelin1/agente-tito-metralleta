@@ -3,24 +3,51 @@
 
 import { fetchAlpacaFlow, fetchAlpacaStockQuote, hasAlpacaKeys, AlpacaError } from "@/lib/alpaca";
 import { classifyFlow } from "@/lib/flow";
-import { analyzeMarket, type MarketRead } from "@/lib/mercado";
+import { analyzeMarket, gexFromOptions, type MarketRead } from "@/lib/mercado";
+import { hasTastytrade, opcionesGammaOI, precio } from "@/lib/tastytrade";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const INDICES: { ticker: string; label: string }[] = [
-  { ticker: "SPY", label: "S&P 500 · MES" },
-  { ticker: "QQQ", label: "Nasdaq · MNQ" },
+// SPY ≙ S&P 500 (índice SPX, futuro MES); QQQ ≙ Nasdaq (índice NDX, futuro MNQ).
+const INDICES: {
+  ticker: string; label: string; index: "SPX" | "NDX"; future: string;
+}[] = [
+  { ticker: "SPY", label: "S&P 500 · MES", index: "SPX", future: process.env.TITO_MES_FUTURE || "/MESZ6" },
+  { ticker: "QQQ", label: "Nasdaq · MNQ", index: "NDX", future: process.env.TITO_MNQ_FUTURE || "/MNQZ6" },
 ];
 
-async function readOne(ticker: string, label: string, now: Date): Promise<MarketRead> {
+async function readOne(
+  spec: (typeof INDICES)[number],
+  now: Date,
+): Promise<MarketRead> {
   const [flow, quote] = await Promise.all([
-    fetchAlpacaFlow(ticker, { minPremium: 100_000, maxPages: 6 }),
-    fetchAlpacaStockQuote(ticker),
+    fetchAlpacaFlow(spec.ticker, { minPremium: 100_000, maxPages: 6 }),
+    fetchAlpacaStockQuote(spec.ticker),
   ]);
   const { rows } = classifyFlow(flow.trades, now);
   const spot = quote.price ?? rows.find((r) => r.assetPrice)?.assetPrice ?? null;
-  return analyzeMarket(ticker, label, rows, spot, quote.prevClose);
+  const read = analyzeMarket(spec.ticker, spec.label, rows, spot, quote.prevClose);
+
+  // Enriquecer con GEX real + precio de futuro (tastytrade), si hay credenciales.
+  if (hasTastytrade()) {
+    try {
+      const [go, fut] = await Promise.all([
+        opcionesGammaOI(spec.index, { dteMax: 1, timeoutMs: 18000 }),
+        precio(spec.future).catch(() => null),
+      ]);
+      if (go.options.length > 0) {
+        const gex = gexFromOptions(go.options, go.spot || 0);
+        gex.realtimePrice = fut;
+        read.gex = gex;
+      } else if (fut != null) {
+        read.gex = { net: 0, regime: "—", magnet: null, realtimePrice: fut };
+      }
+    } catch {
+      // GEX best-effort: si falla, la lectura de Alpaca ya es útil.
+    }
+  }
+  return read;
 }
 
 export async function GET() {
@@ -32,7 +59,7 @@ export async function GET() {
   }
   const now = new Date();
   try {
-    const markets = await Promise.all(INDICES.map((i) => readOne(i.ticker, i.label, now)));
+    const markets = await Promise.all(INDICES.map((i) => readOne(i, now)));
     return Response.json({ markets, generatedAt: now.toISOString() });
   } catch (err) {
     const message = err instanceof AlpacaError ? err.message : "No se pudo leer el mercado.";

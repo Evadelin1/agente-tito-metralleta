@@ -14,6 +14,20 @@ export interface BigFlow {
   premium: number;
 }
 
+export interface GexOption {
+  strike: number;
+  type: "C" | "P";
+  gamma: number;
+  oi: number;
+}
+
+export interface GexRead {
+  net: number; // GEX neto (positivo = dealers estabilizan; negativo = amplifican)
+  regime: string;
+  magnet: number | null; // strike imán (mayor concentración de gamma)
+  realtimePrice: number | null; // precio real del futuro (tastytrade)
+}
+
 export interface MarketRead {
   ticker: string;
   label: string;
@@ -28,6 +42,28 @@ export interface MarketRead {
   support: number | null; // piso = strike de puts con más dinero abajo del precio
   topFlows: BigFlow[]; // los 3 contratos con más millones (dónde va el dinero)
   summary: string;
+  gex?: GexRead | null; // GEX real del índice (tastytrade), si está disponible
+}
+
+/**
+ * GEX a partir de gamma + Open Interest de las opciones del índice.
+ * GEX por contrato = gamma × OI × 100 × spot² × 0.01 (+call / −put).
+ */
+export function gexFromOptions(options: GexOption[], spot: number): GexRead {
+  let net = 0;
+  const perStrike = new Map<number, number>();
+  for (const o of options) {
+    const g = o.gamma * o.oi * 100 * spot * spot * 0.01 * (o.type === "C" ? 1 : -1);
+    net += g;
+    perStrike.set(o.strike, (perStrike.get(o.strike) ?? 0) + Math.abs(g));
+  }
+  let magnet: number | null = null;
+  let best = -1;
+  for (const [k, v] of perStrike) if (v > best) { best = v; magnet = k; }
+  const regime = net >= 0
+    ? "γ+ estabiliza (el precio tiende a revertir)"
+    : "γ− amplifica (el movimiento acelera)";
+  return { net, regime, magnet, realtimePrice: null };
 }
 
 function topStrike(m: Map<number, number>, spot: number | null, side: "above" | "below"): number | null {

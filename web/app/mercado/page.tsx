@@ -93,6 +93,23 @@ function MarketCard({ m }: { m: MarketRead }) {
         </div>
       )}
 
+      {m.gex && (
+        <div style={{ background: "var(--surface-2, #eef1f5)", borderRadius: 10, padding: "10px 12px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", color: "var(--muted)", marginBottom: 4 }}>
+            GEX REAL · tastytrade (tiempo real)
+          </div>
+          {m.gex.realtimePrice != null && (
+            <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 2 }}>
+              Tu futuro ({m.label.split("·").pop()?.trim()}): {px.format(m.gex.realtimePrice)}
+            </div>
+          )}
+          <div style={{ fontSize: 14 }}>
+            {m.gex.magnet != null && <>Imán <b>{px.format(m.gex.magnet)}</b> · </>}
+            <span className={m.gex.net >= 0 ? "up" : "down"}>{m.gex.regime}</span>
+          </div>
+        </div>
+      )}
+
       <div className="iv-note" style={{ marginTop: 2 }}>{m.summary}</div>
 
       <Link href={`/?ticker=${m.ticker}`} className="nav-tab" style={{ justifyContent: "center", fontWeight: 700 }}>
