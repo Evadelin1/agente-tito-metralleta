@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 // Time & Sales). Vive en la barra superior de cada página para que moverse
 // entre ellas sea un clic, no un enlace perdido.
 const TABS = [
+  { href: "/mercado", label: "Mercado", icon: "🧭" },
   { href: "/", label: "Ticker", icon: "📈" },
   { href: "/ideas", label: "Ideas", icon: "💡" },
   { href: "/wheel", label: "Wheel", icon: "🎡" },

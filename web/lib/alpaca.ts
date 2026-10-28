@@ -143,6 +143,30 @@ async function fetchAlpacaSpot(ticker: string): Promise<number | null> {
  * `period` / `targetDays` se ignoran: el snapshot es una foto actual, no un tape
  * histórico (limitación declarada — ver docs).
  */
+/** Precio actual + cierre previo del subyacente (para el % del día). Mejor esfuerzo. */
+export async function fetchAlpacaStockQuote(
+  ticker: string,
+): Promise<{ price: number | null; prevClose: number | null }> {
+  try {
+    const res = await fetch(
+      `${DATA_URL}/v2/stocks/${encodeURIComponent(ticker)}/snapshot?feed=iex`,
+      { headers: authHeaders(), cache: "no-store" },
+    );
+    if (!res.ok) return { price: null, prevClose: null };
+    const j: {
+      latestTrade?: { p?: number };
+      dailyBar?: { c?: number };
+      prevDailyBar?: { c?: number };
+    } = await res.json();
+    return {
+      price: j.latestTrade?.p ?? j.dailyBar?.c ?? null,
+      prevClose: j.prevDailyBar?.c ?? null,
+    };
+  } catch {
+    return { price: null, prevClose: null };
+  }
+}
+
 export async function fetchAlpacaFlow(
   ticker: string,
   opts: FetchFlowOptions = {},
