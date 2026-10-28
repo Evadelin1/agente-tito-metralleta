@@ -26,6 +26,8 @@ export interface GexRead {
   regime: string;
   magnet: number | null; // strike imán (mayor concentración de gamma)
   realtimePrice: number | null; // precio real del futuro (tastytrade)
+  callWall: number | null; // muro de calls = techo (en escala del índice/micro)
+  putWall: number | null; // muro de puts = piso (en escala del índice/micro)
 }
 
 export interface MarketRead {
@@ -52,10 +54,19 @@ export interface MarketRead {
 export function gexFromOptions(options: GexOption[], spot: number): GexRead {
   let net = 0;
   const perStrike = new Map<number, number>();
+  // Muros por Open Interest: más OI de calls arriba = techo; más OI de puts abajo = piso.
+  let callWall: number | null = null, callWallOI = -1;
+  let putWall: number | null = null, putWallOI = -1;
   for (const o of options) {
     const g = o.gamma * o.oi * 100 * spot * spot * 0.01 * (o.type === "C" ? 1 : -1);
     net += g;
     perStrike.set(o.strike, (perStrike.get(o.strike) ?? 0) + Math.abs(g));
+    if (o.type === "C" && (spot <= 0 || o.strike >= spot) && o.oi > callWallOI) {
+      callWallOI = o.oi; callWall = o.strike;
+    }
+    if (o.type === "P" && (spot <= 0 || o.strike <= spot) && o.oi > putWallOI) {
+      putWallOI = o.oi; putWall = o.strike;
+    }
   }
   let magnet: number | null = null;
   let best = -1;
@@ -63,7 +74,7 @@ export function gexFromOptions(options: GexOption[], spot: number): GexRead {
   const regime = net >= 0
     ? "γ+ estabiliza (el precio tiende a revertir)"
     : "γ− amplifica (el movimiento acelera)";
-  return { net, regime, magnet, realtimePrice: null };
+  return { net, regime, magnet, realtimePrice: null, callWall, putWall };
 }
 
 function topStrike(m: Map<number, number>, spot: number | null, side: "above" | "below"): number | null {

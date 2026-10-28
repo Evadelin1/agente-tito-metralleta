@@ -99,8 +99,14 @@ function MarketCard({ m }: { m: MarketRead }) {
             GEX REAL · tastytrade (tiempo real)
           </div>
           {m.gex.realtimePrice != null && (
-            <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 2 }}>
+            <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>
               Tu futuro ({m.label.split("·").pop()?.trim()}): {px.format(m.gex.realtimePrice)}
+            </div>
+          )}
+          {(m.gex.callWall != null || m.gex.putWall != null) && (
+            <div style={{ display: "flex", gap: 14, fontSize: 14, marginBottom: 2 }}>
+              <span>🔴 Techo <b>{m.gex.callWall != null ? px.format(m.gex.callWall) : "—"}</b></span>
+              <span>🟢 Piso <b>{m.gex.putWall != null ? px.format(m.gex.putWall) : "—"}</b></span>
             </div>
           )}
           <div style={{ fontSize: 14 }}>
