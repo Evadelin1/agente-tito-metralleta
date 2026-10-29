@@ -5,26 +5,36 @@
 # sube el build, instala las credenciales en la VM (solo-root) y arranca Tito.
 #
 #   Uso:   bash deploy/gcp/tito-deploy.sh
+#          bash deploy/gcp/tito-deploy.sh --sin-build   (reusa el build actual)
 #
-# Requisitos: gcloud ya logueado (lo estás) y el build hecho:
-#   cd web && npm run build
+# Requisitos: gcloud ya logueado (lo estás). El build lo hace este script solo
+# (antes había que correr `npm run build` a mano y, si se olvidaba, subía código
+# VIEJO sin avisar — justo lo que pasó). Usa --sin-build solo si ya compilaste.
 # ============================================================================
 set -euo pipefail
 ZONE=us-east1-b
 VM=evolet
 PORT=8090
+SKIP_BUILD=0
+[ "${1:-}" = "--sin-build" ] && SKIP_BUILD=1
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 WEB="$ROOT/web"
 STANDALONE="$WEB/.next/standalone"
 
-if [ ! -f "$STANDALONE/server.js" ]; then
-  echo "✗ No hay build standalone. Primero:  cd web && npm run build" >&2
-  exit 1
-fi
 if [ ! -f "$WEB/.env.local" ]; then
   echo "✗ No encuentro web/.env.local (las credenciales)." >&2
+  exit 1
+fi
+
+if [ "$SKIP_BUILD" -eq 0 ]; then
+  echo "==> 0/6 Compilando (npm run build) para subir el código ACTUAL..."
+  ( cd "$WEB" && npm run build )
+fi
+
+if [ ! -f "$STANDALONE/server.js" ]; then
+  echo "✗ No hay build standalone. Corre sin --sin-build, o:  cd web && npm run build" >&2
   exit 1
 fi
 
