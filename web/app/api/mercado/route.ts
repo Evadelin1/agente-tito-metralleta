@@ -18,10 +18,11 @@ export const dynamic = "force-dynamic";
 const INDICES: {
   ticker: string; label: string; index: "SPX" | "NDX"; future: string; dteMax: number;
 }[] = [
-  // dteMax: SPX tiene OI de sobra en 0DTE; NDX es más flaco, así que ampliamos la
-  // ventana a ~1 semana para que el GEX de MNQ no salga "no fiable" por poco OI.
+  // dteMax 1 (0DTE) para ambos: ampliar la ventana de NDX no mejoró el OI (el OI
+  // flaco de madrugada es por mercado cerrado, no por el DTE) y encima dejaba
+  // lento al servidor. Si NDX sigue flaco en horario real, se revisa el umbral.
   { ticker: "SPY", label: "S&P 500 · MES", index: "SPX", future: process.env.TITO_MES_FUTURE || "/MESZ6", dteMax: 1 },
-  { ticker: "QQQ", label: "Nasdaq · MNQ", index: "NDX", future: process.env.TITO_MNQ_FUTURE || "/MNQZ6", dteMax: 7 },
+  { ticker: "QQQ", label: "Nasdaq · MNQ", index: "NDX", future: process.env.TITO_MNQ_FUTURE || "/MNQZ6", dteMax: 1 },
 ];
 
 async function readOne(
