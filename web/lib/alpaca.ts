@@ -167,6 +167,26 @@ export async function fetchAlpacaStockQuote(
   }
 }
 
+/** Barras diarias (high/low/close) de un ticker. Para revisar el récord de aciertos. */
+export async function fetchAlpacaDailyBars(
+  symbol: string,
+  limit = 12,
+): Promise<{ date: string; high: number; low: number; close: number }[]> {
+  try {
+    const start = new Date(Date.now() - limit * 3 * 86_400_000).toISOString().slice(0, 10);
+    const params = new URLSearchParams({ timeframe: "1Day", start, limit: String(limit), feed: "iex" });
+    const res = await fetch(
+      `${DATA_URL}/v2/stocks/${encodeURIComponent(symbol)}/bars?${params.toString()}`,
+      { headers: authHeaders(), cache: "no-store" },
+    );
+    if (!res.ok) return [];
+    const j: { bars?: { t: string; h: number; l: number; c: number }[] } = await res.json();
+    return (j.bars ?? []).map((b) => ({ date: String(b.t).slice(0, 10), high: b.h, low: b.l, close: b.c }));
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchAlpacaFlow(
   ticker: string,
   opts: FetchFlowOptions = {},

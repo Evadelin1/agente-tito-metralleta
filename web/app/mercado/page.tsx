@@ -159,6 +159,7 @@ export default function MercadoPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [at, setAt] = useState<string | null>(null);
+  const [record, setRecord] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -168,10 +169,11 @@ export default function MercadoPage() {
     for (let attempt = 0; attempt < 6; attempt++) {
       try {
         const r = await fetch("/api/mercado", { cache: "no-store" });
-        const d: { markets?: MarketRead[]; generatedAt?: string; error?: string } = await r.json();
+        const d: { markets?: MarketRead[]; generatedAt?: string; error?: string; record?: string } = await r.json();
         if (!d.error) {
           setMarkets(d.markets ?? []);
           setAt(d.generatedAt ?? null);
+          setRecord(d.record ?? null);
           setErr(null);
           setLoading(false);
           return;
@@ -213,6 +215,12 @@ export default function MercadoPage() {
         {!markets && !err && (
           <div className="card" style={{ textAlign: "center", padding: 32 }}>
             {loading ? "Leyendo el flujo del mercado…" : "Toca Actualizar para leer el mercado."}
+          </div>
+        )}
+
+        {record && markets && (
+          <div className="card" style={{ padding: "10px 14px", fontSize: 14, fontWeight: 600 }}>
+            {record}
           </div>
         )}
 

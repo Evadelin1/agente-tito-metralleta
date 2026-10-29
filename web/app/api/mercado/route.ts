@@ -1,21 +1,27 @@
 // GET /api/mercado — lectura rápida del mercado (SPY + QQQ) con Alpaca.
 // Dirección, dónde se mueven los millones, techo y piso. Para el botón "Mercado".
 
-import { fetchAlpacaFlow, fetchAlpacaStockQuote, hasAlpacaKeys, AlpacaError } from "@/lib/alpaca";
+import { fetchAlpacaDailyBars, fetchAlpacaFlow, fetchAlpacaStockQuote, hasAlpacaKeys, AlpacaError } from "@/lib/alpaca";
 import { classifyFlow } from "@/lib/flow";
 import { analyzeMarket, gexFromOptions, type MarketRead } from "@/lib/mercado";
 import { hasTastytrade, opcionesGammaOI, precio } from "@/lib/tastytrade";
-import { notifyAlignment } from "@/lib/notify";
+import { notifyAlignment, notifyDailySummary, isSummaryTime } from "@/lib/notify";
+import {
+  buildRecords, etDate, readRecords, recordSummary, reviewRecords, writeRecords,
+  type DailyBar,
+} from "@/lib/mercadoRecord";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // SPY ≙ S&P 500 (índice SPX, futuro MES); QQQ ≙ Nasdaq (índice NDX, futuro MNQ).
 const INDICES: {
-  ticker: string; label: string; index: "SPX" | "NDX"; future: string;
+  ticker: string; label: string; index: "SPX" | "NDX"; future: string; dteMax: number;
 }[] = [
-  { ticker: "SPY", label: "S&P 500 · MES", index: "SPX", future: process.env.TITO_MES_FUTURE || "/MESZ6" },
-  { ticker: "QQQ", label: "Nasdaq · MNQ", index: "NDX", future: process.env.TITO_MNQ_FUTURE || "/MNQZ6" },
+  // dteMax: SPX tiene OI de sobra en 0DTE; NDX es más flaco, así que ampliamos la
+  // ventana a ~1 semana para que el GEX de MNQ no salga "no fiable" por poco OI.
+  { ticker: "SPY", label: "S&P 500 · MES", index: "SPX", future: process.env.TITO_MES_FUTURE || "/MESZ6", dteMax: 1 },
+  { ticker: "QQQ", label: "Nasdaq · MNQ", index: "NDX", future: process.env.TITO_MNQ_FUTURE || "/MNQZ6", dteMax: 7 },
 ];
 
 async function readOne(
@@ -36,7 +42,7 @@ async function readOne(
   if (hasTastytrade()) {
     try {
       const [go, fut] = await Promise.all([
-        opcionesGammaOI(spec.index, { dteMax: 1, timeoutMs: 18000 }),
+        opcionesGammaOI(spec.index, { dteMax: spec.dteMax, timeoutMs: 18000 }),
         precio(spec.future).catch(() => null),
       ]);
       if (go.options.length > 0) {
@@ -83,6 +89,10 @@ async function refresh(): Promise<void> {
     lastError = null;
     // Avisa al celular los índices que acaban de ponerse alineados (best-effort).
     void notifyAlignment(markets);
+    // En la ventana de apertura: revisa el récord de ayer, manda el resumen
+    // diario y guarda la lectura de hoy. Fuera de esa ventana no hace nada
+    // (así no gasta llamadas de barras en cada refresco).
+    void dailyRecordAndSummary(markets);
   } catch (err) {
     lastError = err instanceof AlpacaError ? err.message : "No se pudo leer el mercado.";
     // Se conserva la caché anterior (si la hay): mejor datos viejos que nada.
@@ -98,6 +108,34 @@ if (hasAlpacaKeys()) {
   setInterval(() => void refresh(), TTL_MS);
 }
 
+// En la ventana de apertura (9:35–9:55 ET): evalúa el récord contra las barras
+// reales, envía el resumen diario al celular y guarda la lectura de hoy una vez.
+async function dailyRecordAndSummary(markets: MarketRead[]): Promise<void> {
+  if (!isSummaryTime()) return;
+  try {
+    const today = etDate();
+    let recs = readRecords();
+
+    // 1) Evaluar lecturas vencidas con barras diarias reales (Alpaca).
+    if (recs.some((r) => !r.evaluated && r.date < today)) {
+      const barsByTicker: Record<string, DailyBar[]> = {};
+      for (const i of INDICES) barsByTicker[i.ticker] = await fetchAlpacaDailyBars(i.ticker, 15);
+      const { records, changed } = reviewRecords(recs, barsByTicker, today);
+      if (changed) { writeRecords(records); recs = records; }
+    }
+
+    // 2) Resumen diario al celular (una vez por día).
+    const sent = await notifyDailySummary(markets, recordSummary(recs), today);
+
+    // 3) Guardar la lectura de hoy una sola vez.
+    if (sent && !recs.some((r) => r.date === today)) {
+      writeRecords([...recs, ...buildRecords(markets, today)]);
+    }
+  } catch {
+    // best-effort: nunca romper el refresco del mercado
+  }
+}
+
 export async function GET() {
   if (!hasAlpacaKeys()) {
     return Response.json(
@@ -109,7 +147,7 @@ export async function GET() {
   // Si hay caché, se sirve al instante; si está vieja, se refresca por detrás.
   if (cache) {
     if (Date.now() - lastRefresh > TTL_MS) void refresh();
-    return Response.json({ ...cache, stale: Date.now() - lastRefresh > TTL_MS });
+    return Response.json({ ...cache, stale: Date.now() - lastRefresh > TTL_MS, record: recordSummary(readRecords()) });
   }
 
   // Primera carga sin caché: aseguramos un cálculo y esperamos un poco.
@@ -117,7 +155,16 @@ export async function GET() {
   const deadline = Date.now() + FIRST_WAIT_MS;
   while (!cache && Date.now() < deadline) await sleep(500);
 
-  if (cache) return Response.json(cache);
+  // Cast: TS cree que `cache` sigue null tras el return anterior, pero `refresh()`
+  // lo reasigna durante el await del bucle de arriba.
+  const ready = cache as { markets: MarketRead[]; generatedAt: string } | null;
+  if (ready) {
+    return Response.json({
+      markets: ready.markets,
+      generatedAt: ready.generatedAt,
+      record: recordSummary(readRecords()),
+    });
+  }
   return Response.json(
     { error: lastError ?? "Calculando el mercado por primera vez… reintenta en unos segundos." },
     { status: 503 },
