@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { analyzeMarket, marketLearningNote, type MarketRead, type GexRead } from "./mercado";
+import { analyzeMarket, marketLearningNote, scaleGex, type MarketRead, type GexRead } from "./mercado";
 import type { FlowRow } from "./flow";
 
 // Fila de flujo mínima para los tests de analyzeMarket.
@@ -63,6 +63,36 @@ describe("marketLearningNote", () => {
   it("sin precio o sin imán = sin-datos", () => {
     const n = marketLearningNote(base({ gex: gex({ realtimePrice: null }) }));
     expect(n?.verdict).toBe("sin-datos");
+  });
+});
+
+describe("scaleGex — QQQ a escala MNQ", () => {
+  const g: GexRead = {
+    net: -5, regime: "γ−", magnet: 735, realtimePrice: null,
+    callWall: 740, putWall: 730,
+    topLevels: [{ strike: 735, type: "C", oi: 12000 }, { strike: 730, type: "P", oi: 9000 }],
+  };
+
+  it("escala precios por el factor futuro/spot, no el OI ni el net", () => {
+    // QQQ spot 735 → MNQ futuro 29400 ⇒ factor 40
+    const s = scaleGex(g, 29400 / 735);
+    expect(s.magnet).toBeCloseTo(29400, 0);
+    expect(s.callWall).toBeCloseTo(29600, 0);
+    expect(s.putWall).toBeCloseTo(29200, 0);
+    expect(s.topLevels[0].strike).toBeCloseTo(29400, 0);
+    expect(s.topLevels[0].oi).toBe(12000); // OI intacto
+    expect(s.net).toBe(-5); // net intacto
+  });
+
+  it("factor 1 o inválido deja el GEX igual", () => {
+    expect(scaleGex(g, 1)).toBe(g);
+    expect(scaleGex(g, 0)).toBe(g);
+    expect(scaleGex(g, NaN)).toBe(g);
+  });
+
+  it("respeta los null (muros ausentes)", () => {
+    const s = scaleGex({ ...g, callWall: null }, 40);
+    expect(s.callWall).toBeNull();
   });
 });
 

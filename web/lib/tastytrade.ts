@@ -221,8 +221,13 @@ interface NestedChain {
  * para calcular GEX. underlying = "SPX" (S&P/MES) o "NDX" (Nasdaq/MNQ).
  * Devuelve { options, spot }.
  */
+// Spot aproximado por subyacente, solo como respaldo si el Trade no llega a
+// tiempo (sin él, la ventana ATM saldría vacía). QQQ/SPY son los ETF líquidos
+// que usamos como fuente de GEX cuando el índice tiene poco OI.
+const SPOT_FALLBACK: Record<string, number> = { NDX: 24000, SPX: 6800, QQQ: 520, SPY: 580 };
+
 export async function opcionesGammaOI(
-  underlying: "SPX" | "NDX",
+  underlying: "SPX" | "NDX" | "QQQ" | "SPY",
   opts: { dteMax?: number; winPct?: number; maxStrikes?: number; timeoutMs?: number } = {},
 ): Promise<{ options: OptionGO[]; spot: number }> {
   if (!hasTastytrade()) return { options: [], spot: 0 };
@@ -245,7 +250,7 @@ export async function opcionesGammaOI(
   });
   let spot = 0;
   for (const e of spotEv) if (e.eventSymbol === underlying) { const p = num(e.price); if (p) spot = p; }
-  const centro = spot || (underlying === "NDX" ? 24000 : 6800);
+  const centro = spot || SPOT_FALLBACK[underlying] || 1000;
   const lo = centro * (1 - winPct), hi = centro * (1 + winPct);
 
   // Candidatos cercanos al ATM (los que tienen gamma relevante).

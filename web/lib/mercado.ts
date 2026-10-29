@@ -89,6 +89,24 @@ export function gexFromOptions(options: GexOption[], spot: number): GexRead {
   return { net, regime, magnet, realtimePrice: null, callWall, putWall, topLevels };
 }
 
+/**
+ * Escala los precios de un GexRead de la escala de las OPCIONES a la del FUTURO.
+ * Se usa cuando el GEX del Nasdaq se saca de QQQ (ETF líquido) pero se muestra en
+ * escala MNQ: factor = precioFuturo / spotQQQ. El OI y el net no se tocan (el OI
+ * real de QQQ es lo que da fiabilidad; el net solo importa por su signo/régimen).
+ */
+export function scaleGex(g: GexRead, factor: number): GexRead {
+  if (!(factor > 0) || factor === 1) return g;
+  const s = (n: number | null) => (n == null ? null : n * factor);
+  return {
+    ...g,
+    magnet: s(g.magnet),
+    callWall: s(g.callWall),
+    putWall: s(g.putWall),
+    topLevels: g.topLevels.map((l) => ({ ...l, strike: l.strike * factor })),
+  };
+}
+
 // ============================================================================
 // Nota de aprendizaje: lee el bloque GEX del futuro y explica, en llano, si la
 // dirección del flujo y el imán del GEX se ALINEAN o se contradicen. Pensada

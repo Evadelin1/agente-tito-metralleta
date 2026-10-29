@@ -3,7 +3,7 @@
 
 import { fetchAlpacaDailyBars, fetchAlpacaFlow, fetchAlpacaStockQuote, hasAlpacaKeys, AlpacaError } from "@/lib/alpaca";
 import { classifyFlow } from "@/lib/flow";
-import { analyzeMarket, gexFromOptions, type MarketRead } from "@/lib/mercado";
+import { analyzeMarket, gexFromOptions, scaleGex, type MarketRead } from "@/lib/mercado";
 import { hasTastytrade, opcionesGammaOI, precio } from "@/lib/tastytrade";
 import { notifyAlignment, notifyDailySummary, isSummaryTime } from "@/lib/notify";
 import {
@@ -15,14 +15,19 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // SPY ≙ S&P 500 (índice SPX, futuro MES); QQQ ≙ Nasdaq (índice NDX, futuro MNQ).
+//
+// `gexFrom` = de dónde sale el GEX/imán:
+//   - SPX: opciones del índice (muy líquidas, strikes ~ a escala del MES).
+//   - QQQ: el ÍNDICE NDX tiene poco OI (máx ~142 verificado vs 16.550 de SPX), así
+//     que el imán del Nasdaq se saca de las opciones de QQQ (ETF líquido) y se
+//     ESCALA a escala MNQ con factor = precioFuturo/spotQQQ. Ampliar el DTE de NDX
+//     no ayudaba (diluía); la fuente era el problema, no el vencimiento.
 const INDICES: {
-  ticker: string; label: string; index: "SPX" | "NDX"; future: string; dteMax: number;
+  ticker: string; label: string; gexFrom: "SPX" | "NDX" | "QQQ" | "SPY";
+  future: string; dteMax: number; scaleToFuture: boolean;
 }[] = [
-  // dteMax 1 (0DTE) para ambos: ampliar la ventana de NDX no mejoró el OI (el OI
-  // flaco de madrugada es por mercado cerrado, no por el DTE) y encima dejaba
-  // lento al servidor. Si NDX sigue flaco en horario real, se revisa el umbral.
-  { ticker: "SPY", label: "S&P 500 · MES", index: "SPX", future: process.env.TITO_MES_FUTURE || "/MESZ6", dteMax: 1 },
-  { ticker: "QQQ", label: "Nasdaq · MNQ", index: "NDX", future: process.env.TITO_MNQ_FUTURE || "/MNQZ6", dteMax: 1 },
+  { ticker: "SPY", label: "S&P 500 · MES", gexFrom: "SPX", future: process.env.TITO_MES_FUTURE || "/MESZ6", dteMax: 1, scaleToFuture: false },
+  { ticker: "QQQ", label: "Nasdaq · MNQ", gexFrom: "QQQ", future: process.env.TITO_MNQ_FUTURE || "/MNQZ6", dteMax: 1, scaleToFuture: true },
 ];
 
 async function readOne(
@@ -43,13 +48,17 @@ async function readOne(
   if (hasTastytrade()) {
     try {
       const [go, fut] = await Promise.all([
-        opcionesGammaOI(spec.index, { dteMax: spec.dteMax, timeoutMs: 18000 }),
+        opcionesGammaOI(spec.gexFrom, { dteMax: spec.dteMax, timeoutMs: 18000 }),
         // 14s (no 6s): en la VM pequeña el handshake de DXLink tarda y el precio
         // del futuro llegaba null, dejando el veredicto en "sin datos".
         precio(spec.future, 14000).catch(() => null),
       ]);
       if (go.options.length > 0) {
-        const gex = gexFromOptions(go.options, go.spot || 0);
+        let gex = gexFromOptions(go.options, go.spot || 0);
+        // Nasdaq: el GEX se calcula en escala QQQ y se lleva a escala MNQ.
+        if (spec.scaleToFuture && fut != null && go.spot > 0) {
+          gex = scaleGex(gex, fut / go.spot);
+        }
         gex.realtimePrice = fut;
         read.gex = gex;
       } else if (fut != null) {
