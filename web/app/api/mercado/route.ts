@@ -44,7 +44,9 @@ async function readOne(
     try {
       const [go, fut] = await Promise.all([
         opcionesGammaOI(spec.index, { dteMax: spec.dteMax, timeoutMs: 18000 }),
-        precio(spec.future).catch(() => null),
+        // 14s (no 6s): en la VM pequeña el handshake de DXLink tarda y el precio
+        // del futuro llegaba null, dejando el veredicto en "sin datos".
+        precio(spec.future, 14000).catch(() => null),
       ]);
       if (go.options.length > 0) {
         const gex = gexFromOptions(go.options, go.spot || 0);
