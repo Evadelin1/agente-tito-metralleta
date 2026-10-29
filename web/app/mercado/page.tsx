@@ -219,7 +219,7 @@ export default function MercadoPage() {
         )}
 
         {record && markets && (
-          <div className="card" style={{ padding: "10px 14px", fontSize: 14, fontWeight: 600 }}>
+          <div className="card" style={{ padding: "10px 14px", fontSize: 14, fontWeight: 600, whiteSpace: "pre-line" }}>
             {record}
           </div>
         )}

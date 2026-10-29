@@ -94,4 +94,25 @@ describe("recordSummary", () => {
     expect(s).toMatch(/dirección 50% \(1\/2\)/);
     expect(s).toMatch(/imán 50% \(1\/2\)/);
   });
+
+  it("separa las lecturas ALINEADAS (alza/baja) del total", () => {
+    const evaluated: MercadoRecord[] = [
+      // alineada que acierta
+      rec({ verdict: "alza", evaluated: true, outcome: { barDate: "x", close: 777, directionHit: true, reachedMagnet: true } }),
+      // alineada que falla
+      rec({ verdict: "baja", direction: "bajista", evaluated: true, outcome: { barDate: "x", close: 773, directionHit: false, reachedMagnet: false } }),
+      // mixta (no alineada): baja el promedio total pero NO el de alineadas
+      rec({ verdict: "mixta", evaluated: true, outcome: { barDate: "x", close: 773, directionHit: false, reachedMagnet: false } }),
+    ];
+    const s = recordSummary(evaluated);
+    expect(s).toMatch(/📊 Récord \(3 lecturas\): dirección 33% \(1\/3\)/);
+    expect(s).toMatch(/✅ Cuando dijo ALINEADA \(2\): dirección 50% \(1\/2\)/);
+  });
+
+  it("sin lecturas alineadas no añade la línea ALINEADA", () => {
+    const s = recordSummary([
+      rec({ verdict: "mixta", evaluated: true, outcome: { barDate: "x", close: 777, directionHit: true, reachedMagnet: true } }),
+    ]);
+    expect(s).not.toMatch(/ALINEADA/);
+  });
 });

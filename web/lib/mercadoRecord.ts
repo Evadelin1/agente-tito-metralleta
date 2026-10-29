@@ -103,19 +103,31 @@ export function reviewRecords(
   return { records, changed };
 }
 
-/** Resumen en una línea del récord acumulado (PURO). */
+/**
+ * Resumen del récord acumulado (PURO). Separa el total de las lecturas en que
+ * Tito dijo ALINEADA (verdict alza/baja) — así se ve si la señal limpia acierta
+ * más que el promedio y si vale la pena esperarla. Una línea por grupo.
+ */
 export function recordSummary(records: MercadoRecord[]): string {
   const ev = records.filter((r) => r.evaluated && r.outcome);
   if (!ev.length) return "📊 Récord: aún sin lecturas vencidas para evaluar.";
-  const dir = ev.filter((r) => r.outcome!.directionHit !== null);
-  const dirHits = dir.filter((r) => r.outcome!.directionHit).length;
-  const mag = ev.filter((r) => r.outcome!.reachedMagnet !== null);
-  const magHits = mag.filter((r) => r.outcome!.reachedMagnet).length;
+
   const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
-  const parts = [`📊 Récord (${ev.length} lecturas):`];
-  if (dir.length) parts.push(`dirección ${pct(dirHits, dir.length)}% (${dirHits}/${dir.length})`);
-  if (mag.length) parts.push(`· llegó al imán ${pct(magHits, mag.length)}% (${magHits}/${mag.length})`);
-  return parts.join(" ");
+  const line = (label: string, rs: MercadoRecord[]): string => {
+    const dir = rs.filter((r) => r.outcome!.directionHit !== null);
+    const dirHits = dir.filter((r) => r.outcome!.directionHit).length;
+    const mag = rs.filter((r) => r.outcome!.reachedMagnet !== null);
+    const magHits = mag.filter((r) => r.outcome!.reachedMagnet).length;
+    const parts = [label];
+    if (dir.length) parts.push(`dirección ${pct(dirHits, dir.length)}% (${dirHits}/${dir.length})`);
+    if (mag.length) parts.push(`· imán ${pct(magHits, mag.length)}% (${magHits}/${mag.length})`);
+    return parts.join(" ");
+  };
+
+  const aligned = ev.filter((r) => r.verdict === "alza" || r.verdict === "baja");
+  const out = [line(`📊 Récord (${ev.length} lecturas):`, ev)];
+  if (aligned.length) out.push(line(`✅ Cuando dijo ALINEADA (${aligned.length}):`, aligned));
+  return out.join("\n");
 }
 
 export function readRecords(): MercadoRecord[] {
