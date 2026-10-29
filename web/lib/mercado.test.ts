@@ -1,5 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { marketLearningNote, type MarketRead, type GexRead } from "./mercado";
+import { analyzeMarket, marketLearningNote, type MarketRead, type GexRead } from "./mercado";
+import type { FlowRow } from "./flow";
+
+// Fila de flujo mínima para los tests de analyzeMarket.
+function row(over: Partial<FlowRow> = {}): FlowRow {
+  return {
+    id: 1, symbol: "SPY", underlying: "SPY", type: "call", strike: 775,
+    expiration: null, dte: 0, price: 1, size: 1, side: "ask", aggression: "ask",
+    assetPrice: 775, bid: 0.9, ask: 1.1, premium: 1_000_000, ...over,
+  } as FlowRow;
+}
 
 function base(overrides: Partial<MarketRead> = {}): MarketRead {
   return {
@@ -53,5 +63,52 @@ describe("marketLearningNote", () => {
   it("sin precio o sin imán = sin-datos", () => {
     const n = marketLearningNote(base({ gex: gex({ realtimePrice: null }) }));
     expect(n?.verdict).toBe("sin-datos");
+  });
+});
+
+describe("analyzeMarket — dirección por lado comprado/vendido", () => {
+  it("calls dominantes y COMPRADAS = alcista", () => {
+    const m = analyzeMarket("SPY", "S&P 500 · MES", [
+      row({ type: "call", aggression: "ask", premium: 8_000_000 }),
+      row({ type: "put", aggression: "ask", premium: 2_000_000 }),
+    ], 775, 770);
+    expect(m.direction).toBe("alcista");
+    expect(m.strength).toBe("fuerte");
+  });
+
+  it("calls dominantes pero VENDIDAS = NO alcista (techo, no alza)", () => {
+    const m = analyzeMarket("SPY", "S&P 500 · MES", [
+      row({ type: "call", aggression: "bid", premium: 8_000_000 }),
+      row({ type: "put", aggression: "ask", premium: 2_000_000 }),
+    ], 775, 770);
+    expect(m.direction).not.toBe("alcista");
+    expect(m.direction).toBe("lateral");
+    expect(m.summary).toMatch(/VENDIDAS/);
+    expect(m.summary).toMatch(/techo/i);
+  });
+
+  it("puts dominantes y COMPRADAS = bajista", () => {
+    const m = analyzeMarket("SPY", "S&P 500 · MES", [
+      row({ type: "put", aggression: "ask", premium: 8_000_000 }),
+      row({ type: "call", aggression: "ask", premium: 2_000_000 }),
+    ], 775, 780);
+    expect(m.direction).toBe("bajista");
+  });
+
+  it("puts dominantes pero VENDIDAS = NO bajista (soporte, no baja)", () => {
+    const m = analyzeMarket("SPY", "S&P 500 · MES", [
+      row({ type: "put", aggression: "bid", premium: 8_000_000 }),
+      row({ type: "call", aggression: "ask", premium: 2_000_000 }),
+    ], 775, 780);
+    expect(m.direction).not.toBe("bajista");
+    expect(m.summary).toMatch(/soporte/i);
+  });
+
+  it("sin dato de lado (todo mid) = cae al reparto por premium (comportamiento viejo)", () => {
+    const m = analyzeMarket("SPY", "S&P 500 · MES", [
+      row({ type: "call", aggression: "mid", premium: 8_000_000 }),
+      row({ type: "put", aggression: "mid", premium: 2_000_000 }),
+    ], 775, 770);
+    expect(m.direction).toBe("alcista");
   });
 });

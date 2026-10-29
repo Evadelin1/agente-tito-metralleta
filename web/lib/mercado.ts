@@ -226,12 +226,26 @@ export function analyzeMarket(
   const callPct = tot > 0 ? (callP / tot) * 100 : null;
   const putPct = callPct != null ? 100 - callPct : null;
 
+  // Dirección POR LADO (comprado vs vendido), no solo por volumen.
+  // Regla de dominio: Buy Call = alza · Sell Call = techo · Buy Put = baja · Sell Put = soporte.
+  // Mucho dinero en calls NO es alza si esas calls se VENDEN (eso es un muro/techo).
+  // Si no hay dato de lado (todo "mid"), se cae al reparto por premium (comportamiento viejo).
+  const sideData = callAsk + callBid + putAsk + putBid > 0;
+  const callsBought = callAsk > callBid;
+  const putsBought = putAsk > putBid;
+  const dominantCallsSold = callPct != null && callPct >= 60 && sideData && !callsBought;
+  const dominantPutsSold = callPct != null && callPct <= 40 && sideData && !putsBought;
+
   let direction: MarketDirection = "lateral";
   let strength: MarketRead["strength"] = "mixto";
   if (callPct != null) {
-    if (callPct >= 60) { direction = "alcista"; strength = callPct >= 70 ? "fuerte" : "suave"; }
-    else if (callPct <= 40) { direction = "bajista"; strength = callPct <= 30 ? "fuerte" : "suave"; }
-    else { direction = "lateral"; strength = "mixto"; }
+    if (callPct >= 60 && (!sideData || callsBought)) {
+      direction = "alcista"; strength = callPct >= 70 ? "fuerte" : "suave";
+    } else if (callPct <= 40 && (!sideData || putsBought)) {
+      direction = "bajista"; strength = callPct <= 30 ? "fuerte" : "suave";
+    } else {
+      direction = "lateral"; strength = "mixto";
+    }
   }
 
   const parts: string[] = [];
@@ -252,13 +266,20 @@ export function analyzeMarket(
   const topFlows = flows.sort((a, b) => b.premium - a.premium).slice(0, 3);
 
   const dirWord = direction === "alcista" ? "al alza" : direction === "bajista" ? "a la baja" : "lateral";
-  const summary = callPct != null
-    ? `El dinero se inclina ${dirWord} (${Math.round(callPct)}% en calls). ${behavior}. ${
-        direction === "lateral"
-          ? "Sin apuesta dominante — zona de pelea."
-          : `Sesgo ${strength === "fuerte" ? "claro" : "suave"} ${dirWord}.`
-      }`
-    : "Sin datos suficientes de flujo para leer la dirección.";
+  let summary: string;
+  if (callPct == null) {
+    summary = "Sin datos suficientes de flujo para leer la dirección.";
+  } else if (dominantCallsSold) {
+    summary = `${Math.round(callPct)}% del dinero en calls, pero VENDIDAS (${behavior}): eso es techo/resistencia, no alza. Sin ventaja direccional clara.`;
+  } else if (dominantPutsSold) {
+    summary = `${Math.round(putPct ?? 0)}% del dinero en puts, pero VENDIDAS (${behavior}): eso es soporte, no baja franca. Sin ventaja direccional clara.`;
+  } else {
+    summary = `El dinero se inclina ${dirWord} (${Math.round(callPct)}% en calls). ${behavior}. ${
+      direction === "lateral"
+        ? "Sin apuesta dominante — zona de pelea."
+        : `Sesgo ${strength === "fuerte" ? "claro" : "suave"} ${dirWord}.`
+    }`;
+  }
 
   return {
     ticker, label, price: spot, todayPct, callPct, putPct,
