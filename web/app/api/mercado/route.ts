@@ -47,8 +47,12 @@ async function readOne(
   // Enriquecer con GEX real + precio de futuro (tastytrade), si hay credenciales.
   if (hasTastytrade()) {
     try {
+      // Si la fuente GEX es el MISMO ETF del ticker (QQQ→QQQ), el precio vivo de
+      // Alpaca sirve para centrar la ventana de strikes aunque el ETF no cotice
+      // fuera de horario. Para SPY el GEX viene de SPX (otra escala): sin hint.
+      const spotHint = spec.gexFrom === spec.ticker ? (spot ?? undefined) : undefined;
       const [go, fut] = await Promise.all([
-        opcionesGammaOI(spec.gexFrom, { dteMax: spec.dteMax, timeoutMs: 18000 }),
+        opcionesGammaOI(spec.gexFrom, { dteMax: spec.dteMax, timeoutMs: 18000, spotHint }),
         // 14s (no 6s): en la VM pequeña el handshake de DXLink tarda y el precio
         // del futuro llegaba null, dejando el veredicto en "sin datos".
         precio(spec.future, 14000).catch(() => null),

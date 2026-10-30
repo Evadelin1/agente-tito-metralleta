@@ -228,7 +228,7 @@ const SPOT_FALLBACK: Record<string, number> = { NDX: 24000, SPX: 6800, QQQ: 520,
 
 export async function opcionesGammaOI(
   underlying: "SPX" | "NDX" | "QQQ" | "SPY",
-  opts: { dteMax?: number; winPct?: number; maxStrikes?: number; timeoutMs?: number } = {},
+  opts: { dteMax?: number; winPct?: number; maxStrikes?: number; timeoutMs?: number; spotHint?: number } = {},
 ): Promise<{ options: OptionGO[]; spot: number }> {
   if (!hasTastytrade()) return { options: [], spot: 0 };
   const dteMax = opts.dteMax ?? 1;
@@ -250,7 +250,11 @@ export async function opcionesGammaOI(
   });
   let spot = 0;
   for (const e of spotEv) if (e.eventSymbol === underlying) { const p = num(e.price); if (p) spot = p; }
-  const centro = spot || SPOT_FALLBACK[underlying] || 1000;
+  // Fuera de horario un ETF (QQQ/SPY) no cotiza y DXLink no manda su Trade; sin
+  // precio, la ventana de strikes se centraba en el respaldo fijo (muy lejos del
+  // real) y el imán salía mal escalado. El spotHint (precio vivo de Alpaca que la
+  // ruta ya tiene) centra bien aunque el Trade no llegue.
+  const centro = spot || opts.spotHint || SPOT_FALLBACK[underlying] || 1000;
   const lo = centro * (1 - winPct), hi = centro * (1 + winPct);
 
   // Candidatos cercanos al ATM (los que tienen gamma relevante).
@@ -306,5 +310,7 @@ export async function opcionesGammaOI(
     if (g == null || o == null) continue;
     options.push({ strike: mt.strike, type: mt.type, gamma: g, oi: o, exp: mt.exp });
   }
-  return { options, spot };
+  // Si DXLink nunca mandó el Trade (ETF fuera de horario), usar el hint para que
+  // el factor de escala (futuro/spot) sea correcto y no quede en 0.
+  return { options, spot: spot || opts.spotHint || 0 };
 }
